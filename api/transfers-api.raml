@@ -1,0 +1,269 @@
+#%RAML 1.0
+title: Transfers API
+description: This API handles transfers between accounts.
+version: 1.0.0
+baseUri: https://api.example.com
+protocols: [HTTPS, HTTP]
+
+mediaType: application/json
+
+annotationTypes:
+  contact:
+    type: object
+    properties:
+      email: string
+
+(contact):
+  email: stephen.brown@konghq.com
+
+types:
+  TransferRequest:
+    type: object
+    description: Request payload for initiating a new transfer between accounts
+    properties:
+      from_account_id:
+        type: string
+        description: The UUID of the source account
+        example: "123e4567-e89b-12d3-a456-426614174000"
+      to_account_id:
+        type: string
+        description: The UUID of the destination account
+        example: "987fcdeb-51a2-43e7-89bc-765432198765"
+      amount:
+        type: number
+        description: The amount to transfer (must be positive and have no more than 2 decimal places)
+        example: 100.00
+    example:
+      from_account_id: "123e4567-e89b-12d3-a456-426614174000"
+      to_account_id: "987fcdeb-51a2-43e7-89bc-765432198765"
+      amount: 100.00
+
+  Transfer:
+    type: object
+    description: Represents a transfer between accounts including its current status
+    properties:
+      transfer_id:
+        type: string
+        description: Unique identifier for the transfer (UUID v4)
+        example: "txf-123e4567-e89b-12d3-a456-426614174000"
+      status:
+        type: string
+        enum: [pending, completed, failed]
+        description: The current status of the transfer
+        example: "completed"
+      from_account_id:
+        type: string
+        description: The UUID of the source account
+        example: "123e4567-e89b-12d3-a456-426614174000"
+      to_account_id:
+        type: string
+        description: The UUID of the destination account
+        example: "987fcdeb-51a2-43e7-89bc-765432198765"
+      amount:
+        type: number
+        description: The amount transferred
+        example: 100.00
+      timestamp:
+        type: datetime
+        description: The timestamp when the transfer was initiated
+        example: "2024-01-15T14:30:00Z"
+    example:
+      transfer_id: "txf-123e4567-e89b-12d3-a456-426614174000"
+      status: "completed"
+      from_account_id: "123e4567-e89b-12d3-a456-426614174000"
+      to_account_id: "987fcdeb-51a2-43e7-89bc-765432198765"
+      amount: 100.00
+      timestamp: "2024-01-15T14:30:00Z"
+
+  HealthResponse:
+    type: object
+    description: Response containing the health status of the service and its dependencies
+    properties:
+      status:
+        type: string
+        description: Overall health status of the transfer service
+        example: "UP"
+      account_service:
+        type: string
+        description: Health status of the account service dependency
+        example: "UP"
+      transaction_service:
+        type: string
+        description: Health status of the transaction service dependency
+        example: "UP"
+      message:
+        type: string
+        description: Human-readable description of the health status
+        example: "All services operational"
+    example:
+      status: "UP"
+      account_service: "UP"
+      transaction_service: "UP"
+      message: "All services operational"
+
+  ErrorResponse:
+    type: object
+    description: Standard error response structure for all error scenarios
+    properties:
+      error_code:
+        type: string
+        description: A standardized error code identifying the type of error
+        enum: [BAD_REQUEST, NOT_FOUND, INTERNAL_ERROR, UNPROCESSABLE_ENTITY]
+        example: "BAD_REQUEST"
+      message:
+        type: string
+        description: A human-readable description of the error
+        example: "Validation Error Amount must not have more than 2 decimal places"
+    example:
+      error_code: "BAD_REQUEST"
+      message: "Validation Error Amount must not have more than 2 decimal places"
+
+/health:
+  displayName: Health Check
+  description: Health check endpoints for monitoring service status
+  get:
+    displayName: Check service health status
+    description: Returns the health status of the service and its dependencies (accounts and transactions services)
+    responses:
+      200:
+        description: Service and all dependencies are healthy
+        body:
+          application/json:
+            type: HealthResponse
+            examples:
+              all_healthy:
+                status: "UP"
+                account_service: "UP"
+                transaction_service: "UP"
+                message: "All services operational"
+      503:
+        description: One or more services are unhealthy
+        body:
+          application/json:
+            type: HealthResponse
+            examples:
+              partial_outage:
+                status: "DOWN"
+                account_service: "DOWN"
+                transaction_service: "UP"
+                message: "One or more services are unavialable"
+  head:
+    displayName: Check service health (HEAD)
+    description: Returns the service health status without response body
+    responses:
+      200:
+        description: Service is healthy
+      503:
+        description: One or more services are unhealthy
+
+/transfers:
+  displayName: Transfers
+  description: Operations related to fund transfers between accounts
+  post:
+    displayName: Initiate a new transfer
+    description: Creates a new funds transfer from one account to another. Validates accounts, debits source account, and credits destination account.
+    body:
+      application/json:
+        type: TransferRequest
+        description: Transfer details including source account, destination account, and amount
+        examples:
+          valid_transfer:
+            from_account_id: "123e4567-e89b-12d3-a456-426614174000"
+            to_account_id: "987fcdeb-51a2-43e7-89bc-765432198765"
+            amount: 100.00
+    responses:
+      201:
+        description: Transfer initiated successfully
+        body:
+          application/json:
+            type: Transfer
+            examples:
+              successful_transfer:
+                transfer_id: "txf-123e4567-e89b-12d3-a456-426614174000"
+                status: "completed"
+                from_account_id: "123e4567-e89b-12d3-a456-426614174000"
+                to_account_id: "987fcdeb-51a2-43e7-89bc-765432198765"
+                amount: 100.00
+                timestamp: "2024-01-15T14:30:00Z"
+      400:
+        description: Invalid transfer request
+        body:
+          application/json:
+            type: ErrorResponse
+            examples:
+              validation_error:
+                error_code: "BAD_REQUEST"
+                message: "Validation Error Amount must not have more that two decimal places"
+              same_account:
+                error_code: "BAD_REQUEST"
+                message: "Validation Error Can not transfer to the same account"
+      404:
+        description: Source or destination account not found
+        body:
+          application/json:
+            type: ErrorResponse
+            examples:
+              account_not_found:
+                error_code: "NOT_FOUND"
+                message: "Account Not found Account does not exist"
+      422:
+        description: Transfer cannot be processed
+        body:
+          application/json:
+            type: ErrorResponse
+            examples:
+              insufficient_funds:
+                error_code: "UNPROCESSABLE_ENTITY"
+                message: "Insufficient Funds Account balance too low"
+      500:
+        description: Internal server error
+        body:
+          application/json:
+            type: ErrorResponse
+            examples:
+              internal_error:
+                error_code: "INTERNAL_ERROR"
+                message: "Internal Error Failed to process transfer"
+
+  /{transferId}:
+    displayName: Transfer by ID
+    uriParameters:
+      transferId:
+        type: string
+        description: The UUID of the transfer to retrieve
+        example: "123e4567-e89b-12d3-a456-426614174000"
+    get:
+      displayName: Retrieve transfer details
+      description: Returns the status and details of a previously initiated transfer
+      responses:
+        200:
+          description: Transfer details retrieved successfully
+          body:
+            application/json:
+              type: Transfer
+              examples:
+                completed_transfer:
+                  transfer_id: "txf-123e4567-e89b-12d3-a456-426614174000"
+                  status: "completed"
+                  from_account_id: "123e4567-e89b-12d3-a456-426614174000"
+                  to_account_id: "987fcdeb-51a2-43e7-89bc-765432198765"
+                  amount: 100.00
+                  timestamp: "2024-01-15T14:30:00Z"
+        404:
+          description: Transfer not found
+          body:
+            application/json:
+              type: ErrorResponse
+              examples:
+                not_found:
+                  error_code: "NOT_FOUND"
+                  message: "Transfer Error Transfer 123e4567-e89b-12d3-a456-426614174000 Not Found"
+        500:
+          description: Internal server error
+          body:
+            application/json:
+              type: ErrorResponse
+              examples:
+                lock_error:
+                  error_code: "INTERNAL_ERROR"
+                  message: "Lock Error Failed to acquire lock"
